@@ -1,3 +1,5 @@
+use std::fs::File;
+use std::io::Read;
 use std::path;
 
 use clap::Clap;
@@ -8,19 +10,29 @@ pub struct Opts {
     pub filename: path::PathBuf,
     pub search: String,
     #[clap(short, long, default_value = "0")]
-    pub context: i32,
+    pub context: usize,
 }
 
 pub fn get_opts() -> Opts {
     Opts::parse()
 }
 
+pub fn get_file_content(filename: &path::PathBuf) -> String {
+    let mut f = File::open(filename)
+        .expect("cannot open file text.txt");
+
+    let mut text = String::new();
+    f.read_to_string(&mut text)
+        .expect("cannot read file text.txt");
+    text
+}
+
 pub struct Grep {
     search: String,
     content: String,
-    context: i32,
+    context: usize,
     matched_lines: Vec<usize>,
-    all_lines: Vec<i32>,
+    all_lines: Vec<usize>,
 }
 
 impl Grep {
@@ -36,51 +48,46 @@ impl Grep {
 
     pub fn run(content: &str, opts: &Opts) {
         let mut grep = Self::new(content, opts);
-        grep.find_match_lines();
-        grep.find_context_lines();
+        grep.find_lines();
         grep.print_lines();
     }
 
-    fn find_match_lines(&mut self) {
-        for (i, line) in self.content.lines().enumerate() {
+    fn find_lines(&mut self) {
+        for (i, line) in self.content.clone().lines().enumerate() {
             if !line.contains(&self.search) {
                 continue
             }
             self.matched_lines.push(i);
-            self.all_lines.push(i as i32);
+            self.all_lines.push(i);
+
+            self.find_context_lines(i);
         }
     }
 
-    fn find_context_lines(&mut self) {
-        for i in 1..self.context+1 {
-            for j in self.matched_lines.iter() {
-                let j = *j as i32;
-                if i <= j {
-                    if !self.all_lines.contains(&(j-i)) {
-                        self.all_lines.push(j-i);
-                    }
-                }
+    fn find_context_lines(&mut self, line_no: usize) {
+        if self.context == 0 {
+            return
+        }
 
-                if j + i < self.content.lines().count() as i32 {
-                    if !self.all_lines.contains(&(j + i)) {
-                        self.all_lines.push(j+i);
-                    }
-                }
+        for j in 1..self.context+1 {
+            if j <= line_no {
+                self.all_lines.push(line_no-j);
             }
+            self.all_lines.push(line_no+j);
         }
     }
 
     fn print_lines(&self){
         for (i, line) in self.content.lines().enumerate() {
-            if !self.all_lines.contains(&(i as i32)) {
+            if !self.all_lines.contains(&i) {
                 continue;
             }
             if self.matched_lines.contains(&i) {
                 let line = line.replace(&self.search, &self.search.red().to_string());
                 let line = format!("{}| {}", i+1, line);
-                println!("{}", line.bold());
+                println!("  {}", line.bold());
             } else {
-                println!("{}| {}", i+1, line);
+                println!("* {}| {}", i+1, line);
             }
         }
     }
